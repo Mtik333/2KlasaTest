@@ -4,18 +4,364 @@ let exerciseMode = false;
 let exerciseStartTime = null;
 let exerciseAnswers = [];
 
+// Claude API Configuration
+class ClaudeIntegration {
+    constructor() {
+        this.apiKey = localStorage.getItem('claude_api_key') || null;
+        this.baseURL = 'https://api.anthropic.com/v1/messages';
+        this.studentProfile = this.loadStudentProfile();
+        this.conversationHistory = [];
+    }
+
+    // Ustawienie klucza API
+    async setApiKey(key) {
+        this.apiKey = key;
+        localStorage.setItem('claude_api_key', key);
+        
+        // Test połączenia
+        try {
+            await this.testConnection();
+            return { success: true, message: "Połączenie z Claude API działa!" };
+        } catch (error) {
+            this.apiKey = null;
+            localStorage.removeItem('claude_api_key');
+            return { success: false, message: "Błąd połączenia: " + error.message };
+        }
+    }
+
+    // Test połączenia z API
+    async testConnection() {
+        const response = await fetch(this.baseURL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': this.apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: "claude-3-sonnet-20240229",
+                max_tokens: 50,
+                messages: [{ 
+                    role: "user", 
+                    content: "Odpowiedz krótko: 'test połączenia ok'" 
+                }]
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data;
+    }
+
+    // Główna funkcja komunikacji z Claude
+    async askClaude(message, context = {}) {
+        if (!this.apiKey) {
+            return this.getFallbackResponse(message);
+        }
+
+        try {
+            const prompt = this.buildSystemPrompt(context);
+            const userMessage = this.buildUserMessage(message, context);
+
+            const response = await fetch(this.baseURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify({
+                    model: "claude-3-sonnet-20240229",
+                    max_tokens: 300,
+                    messages: [
+                        { role: "user", content: prompt + "\n\nUCZEŃ: " + userMessage }
+                    ]
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const aiResponse = data.content[0].text;
+
+            // Zapisz interakcję
+            this.recordInteraction(message, aiResponse, context);
+            
+            return aiResponse;
+
+        } catch (error) {
+            console.error('Claude API Error:', error);
+            return this.getFallbackResponse(message);
+        }
+    }
+
+    // Budowanie systemu prompt dla Claude
+    buildSystemPrompt(context) {
+        const profile = this.studentProfile;
+        
+        return `Jesteś Alex - flegmatyczny korepetytor AI dla ucznia 2 klasy liceum. 
+
+TWÓJ STYL:
+- piszesz małymi literami na początku zdań (czasem zapominasz o wielkiej literze)
+- NIE używasz emoji ani wykrzykników  
+- młodzieżowy język: "okej", "spoko", "luz", "git", "no to"
+- flegmatyczny ton - bez przesadnego entuzjazmu
+- realistyczne oceny: "poszło spoko" zamiast "fantastycznie!"
+- czasem krótkie odpowiedzi
+
+PROFIL UCZNIA:
+- Łącznie sesji: ${profile.totalSessions}
+- Średni wynik: ${profile.averageScore}%
+- Często używa podpowiedzi: ${profile.hintsUsageRate > 0.7 ? 'tak' : 'nie'}
+- Często pomija zadania: ${profile.skipRate > 0.3 ? 'tak' : 'nie'}
+- Ostatnie 3 wyniki: ${profile.recentScores.slice(-3).join('%, ')}%
+- Obecny poziom frustracji: ${profile.frustrationLevel}/10
+- Słabe obszary: ${profile.weakAreas.join(', ')}
+- Na co dobrze reaguje: ${profile.respondsWellTo.join(', ')}
+
+OBECNA SESJA:
+${context.exerciseMode ? `
+- Tryb ćwiczeń: AKTYWNY (${context.currentExercise}/10 zadanie)
+- Poprawnych w tej sesji: ${context.correctInSession}
+- Użyto podpowiedzi: ${context.hintsUsedInSession} razy
+- Czas sesji: ${context.sessionTimeMinutes} minut
+- Obecne zadanie: "${context.currentQuestion || 'brak'}"
+` : '- Tryb ćwiczeń: NIEAKTYWNY (rozmowa ogólna)'}
+
+WYTYCZNE:
+1. Dostosuj ton do profilu ucznia i obecnej sytuacji
+2. Jeśli uczeń się frustruje (>6/10) - uspokajaj, używaj "luz", "spoko"
+3. Jeśli ma dobre wyniki - pochwal bez przesady: "git", "niezły wynik"
+4. Jeśli często używa podpowiedzi - zachęcaj do samodzielności
+5. Jeśli zadanie z słabego obszaru - oferuj dodatkową pomoc
+6. Pamiętaj o flegmatycznym stylu - nie bądź za entuzjastyczny
+
+PRZYKŁADY DOBREGO STYLU:
+✓ "git, masz to. poszło spoko"
+✓ "hmm, nie tym razem. ale luz, każdy się myli"  
+✓ "okej, która część sprawia problemy"
+✓ "trzeba jeszcze poćwiczyć ale da się to ogarnąć"
+
+UNIKAJ:
+✗ "Fantastycznie!" "Świetnie!" "Brawo!" 
+✗ Emoji i wykrzykników
+✗ Przesadnego entuzjazmu
+✗ Długich wyjaśnień bez potrzeby`;
+    }
+
+    // Budowanie wiadomości użytkownika z kontekstem
+    buildUserMessage(message, context) {
+        let contextInfo = "";
+        
+        if (context.exerciseMode && context.lastInteraction) {
+            contextInfo = `\n[KONTEKST: ${context.lastInteraction}]`;
+        }
+        
+        return message + contextInfo;
+    }
+
+    // Zapisywanie interakcji dla uczenia się
+    recordInteraction(userMessage, aiResponse, context) {
+        const interaction = {
+            timestamp: Date.now(),
+            userMessage,
+            aiResponse,
+            context: { ...context },
+            exerciseMode: exerciseMode
+        };
+
+        this.conversationHistory.push(interaction);
+        
+        // Zachowaj tylko ostatnie 50 interakcji
+        if (this.conversationHistory.length > 50) {
+            this.conversationHistory.shift();
+        }
+
+        // Aktualizuj profil ucznia
+        this.updateStudentProfile(userMessage, context);
+        this.saveStudentProfile();
+        
+        localStorage.setItem('conversation_history', JSON.stringify(this.conversationHistory));
+    }
+
+    // Aktualizacja profilu ucznia
+    updateStudentProfile(message, context) {
+        const profile = this.studentProfile;
+        const lowerMessage = message.toLowerCase();
+
+        // Wykrywanie frustracji
+        if (lowerMessage.includes('trudne') || 
+            lowerMessage.includes('nie rozumiem') || 
+            lowerMessage.includes('za ciężkie') ||
+            context.exerciseSkipped) {
+            profile.frustrationLevel = Math.min(10, profile.frustrationLevel + 1);
+        } else if (lowerMessage.includes('spoko') || 
+                   lowerMessage.includes('okej') || 
+                   lowerMessage.includes('git') ||
+                   context.exerciseCorrect) {
+            profile.frustrationLevel = Math.max(0, profile.frustrationLevel - 0.5);
+        }
+
+        // Śledzenie używania podpowiedzi
+        if (context.hintUsed) {
+            profile.hintsUsed++;
+        }
+
+        // Śledzenie sesji
+        if (context.exerciseMode) {
+            profile.totalExercises++;
+            if (context.exerciseSkipped) {
+                profile.exercisesSkipped++;
+            }
+        }
+
+        // Obliczanie wskaźników
+        profile.hintsUsageRate = profile.hintsUsed / Math.max(profile.totalExercises, 1);
+        profile.skipRate = profile.exercisesSkipped / Math.max(profile.totalExercises, 1);
+
+        // Aktualizacja obszarów gdzie uczniu idzie dobrze/słabo
+        if (context.topic && context.exerciseCorrect !== undefined) {
+            if (!profile.topicStats[context.topic]) {
+                profile.topicStats[context.topic] = { correct: 0, total: 0 };
+            }
+            profile.topicStats[context.topic].total++;
+            if (context.exerciseCorrect) {
+                profile.topicStats[context.topic].correct++;
+            }
+
+            // Aktualizuj słabe obszary
+            const topicRate = profile.topicStats[context.topic].correct / profile.topicStats[context.topic].total;
+            if (topicRate < 0.6 && profile.topicStats[context.topic].total >= 3) {
+                if (!profile.weakAreas.includes(context.topic)) {
+                    profile.weakAreas.push(context.topic);
+                }
+            }
+        }
+    }
+
+    // Ładowanie profilu ucznia
+    loadStudentProfile() {
+        const saved = localStorage.getItem('student_profile_claude');
+        if (saved) {
+            return JSON.parse(saved);
+        }
+
+        return {
+            totalSessions: 0,
+            totalExercises: 0,
+            averageScore: 0,
+            recentScores: [],
+            hintsUsed: 0,
+            hintsUsageRate: 0,
+            exercisesSkipped: 0,
+            skipRate: 0,
+            frustrationLevel: 5, // 0-10 skala
+            weakAreas: ['funkcje kwadratowe'],
+            respondsWellTo: ['zachęta', 'spokojne wyjaśnienia'],
+            topicStats: {},
+            lastSessionDate: null
+        };
+    }
+
+    // Zapisywanie profilu ucznia
+    saveStudentProfile() {
+        localStorage.setItem('student_profile_claude', JSON.stringify(this.studentProfile));
+    }
+
+    // Fallback odpowiedzi gdy API nie działa
+    getFallbackResponse(message) {
+        const responses = [
+            "hmm, rozwiń to trochę",
+            "okej, a co dalej",
+            "spoko, myśl głośno",
+            "jasne, jak to widzisz",
+            "dobra obserwacja"
+        ];
+        return responses[Math.floor(Math.random() * responses.length)];
+    }
+
+    // Raport o uczniu dla monitora
+    generateStudentReport() {
+        const profile = this.studentProfile;
+        return {
+            frustrationLevel: profile.frustrationLevel,
+            hintsUsage: Math.round(profile.hintsUsageRate * 100),
+            skipRate: Math.round(profile.skipRate * 100),
+            recentTrend: this.calculateTrend(),
+            weakAreas: profile.weakAreas,
+            recommendations: this.generateRecommendations()
+        };
+    }
+
+    calculateTrend() {
+        const recent = this.studentProfile.recentScores.slice(-5);
+        const older = this.studentProfile.recentScores.slice(-10, -5);
+        
+        if (recent.length < 3) return 'za mało danych';
+        
+        const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+        const olderAvg = older.length > 0 ? older.reduce((a, b) => a + b, 0) / older.length : recentAvg;
+        
+        if (recentAvg > olderAvg + 5) return 'poprawia się';
+        if (recentAvg < olderAvg - 5) return 'pogarsza się';
+        return 'stabilny';
+    }
+
+    generateRecommendations() {
+        const profile = this.studentProfile;
+        const recommendations = [];
+        
+        if (profile.frustrationLevel > 7) {
+            recommendations.push("Wysoki poziom frustracji - rozważ przerwę lub łatwiejsze zadania");
+        }
+        
+        if (profile.hintsUsageRate > 0.7) {
+            recommendations.push("Często używa podpowiedzi - może zadania są za trudne");
+        }
+        
+        if (profile.skipRate > 0.4) {
+            recommendations.push("Często pomija zadania - sprawdź motywację");
+        }
+        
+        return recommendations;
+    }
+}
+
+// Inicjalizacja Claude integration
+const claudeAI = new ClaudeIntegration();
+
 // Chat z korepetytorem
-function sendMessage() {
+async function sendMessage() {
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
     if (message) {
         addStudentMessage(message);
         input.value = '';
         
-        // Symulacja odpowiedzi korepetytora
-        setTimeout(() => {
-            respondToStudent(message);
-        }, 1000);
+        // Pokaż że AI "myśli"
+        const thinkingMsg = addTutorMessage("...");
+        
+        // Przygotuj kontekst
+        const context = {
+            exerciseMode: exerciseMode,
+            currentExercise: currentExercise + 1,
+            correctInSession: exerciseMode ? exerciseAnswers.filter(a => checkAnswer(a.userAnswer, a.correctAnswer)).length : 0,
+            hintsUsedInSession: exerciseMode ? exerciseAnswers.filter(a => a.hintUsed).length : 0,
+            sessionTimeMinutes: exerciseMode && exerciseStartTime ? Math.round((new Date() - exerciseStartTime) / 60000) : 0,
+            currentQuestion: exerciseMode && currentExercise < quadraticExercises.length ? quadraticExercises[currentExercise].question : null,
+            topic: exerciseMode ? 'funkcje kwadratowe' : 'ogólne'
+        };
+        
+        // Zapytaj Claude
+        const response = await claudeAI.askClaude(message, context);
+        
+        // Zastąp "..." prawdziwą odpowiedzią
+        thinkingMsg.innerHTML = response;
     }
 }
 
@@ -35,69 +381,94 @@ function addTutorMessage(message) {
     messageDiv.innerHTML = message;
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    return messageDiv; // Zwróć element żeby można było go później modyfikować
 }
 
-function respondToStudent(message) {
-    const lowerMessage = message.toLowerCase();
-    let response;
+// Konfiguracja Claude API
+async function setupClaudeAPI() {
+    const apiKey = prompt(`Wprowadź swój klucz API Anthropic Claude:
 
-    if (lowerMessage.includes('pomoc') || lowerMessage.includes('help')) {
-        response = "ok, pomagam. możesz zapytać o konkretne zadania albo poprosić żebym wytłumaczył jakiś temat. co konkretnie nie gra";
-    } else if (lowerMessage.includes('matematyka') || lowerMessage.includes('mat')) {
-        response = "matma... ok. która część sprawia ci problemy? funkcje, równania, geometria? to wszystko da się ogarnąć ale trzeba poćwiczyć";
-    } else if (lowerMessage.includes('polski') || lowerMessage.includes('literatura')) {
-        response = "polski może być spoko jak się da zrozumieć o co chodzi w tych wszystkich lekturach. może poćwiczymy analizę tekstu albo rozprawkę";
-    } else if (lowerMessage.includes('trudne') || lowerMessage.includes('nie rozumiem')) {
-        response = "każdy czasem nie łapie. to normalne że bywa trudno, ale da się to przebić. nie poddawaj się od razu";
-    } else if (lowerMessage.includes('egzamin') || lowerMessage.includes('poprawka')) {
-        response = "poprawka to druga szansa więc trzeba ją wykorzystać. mamy jeszcze trochę czasu więc spoko. lepiej się uczyć systematycznie niż na ostatnią chwilę";
-    } else {
-        const responses = [
-            "hmm, rozwiń to trochę",
-            "dobra obserwacja, myśl dalej",
-            "okej, a co dalej",
-            "interesujące, jak to widzisz",
-            "spoko, gadaj śmiało"
-        ];
-        response = responses[Math.floor(Math.random() * responses.length)];
+Gdzie go znaleźć:
+1. Idź na: https://console.anthropic.com/
+2. Zaloguj się lub załóż konto
+3. Idź do "API Keys" 
+4. Skopiuj klucz
+
+Klucz API:`);
+    
+    if (apiKey && apiKey.trim()) {
+        addTutorMessage("sprawdzam połączenie...");
+        
+        const result = await claudeAI.setApiKey(apiKey.trim());
+        
+        if (result.success) {
+            addTutorMessage("okej, podłączyłem się do claude api. teraz będę się uczyć twojego stylu nauki i dostosowywać odpowiedzi");
+        } else {
+            addTutorMessage(`hmm, coś nie gra z api: ${result.message}<br><br>sprawdź czy klucz jest dobry albo użyj systemu bez api`);
+        }
     }
+}
 
-    addTutorMessage(response);
+// Funkcja fallback dla kompatybilności wstecznej  
+async function respondToStudent(message) {
+    // Ta funkcja jest już zastąpiona przez sendMessage() z Claude API
+    // Pozostawiona dla kompatybilności
+    await sendMessage();
 }
 
 function startLearningSession() {
-    addTutorMessage(`okej, zaczynamy sesję nauki. na co masz ochotę 
-    <br><br>
-    <button class="btn" onclick="startMathSession()">matma</button>
-    <button class="btn" onclick="startPolishSession()">polski</button>
-    <br><br>
-    wybieraj co chcesz`);
+    claudeAI.askClaude("rozpocznij sesję nauki", {
+        exerciseMode: false,
+        topic: 'wybór przedmiotu'
+    }).then(response => {
+        addTutorMessage(`${response}
+        <br><br>
+        <button class="btn" onclick="startMathSession()">matma</button>
+        <button class="btn" onclick="startPolishSession()">polski</button>
+        <br><br>
+        wybieraj co chcesz`);
+    });
 }
 
 function startMathSession() {
-    addTutorMessage(`no to matma. która część cię interesuje
-    <br><br>
-    <button class="btn" onclick="startQuadraticFunctions()">funkcje kwadratowe</button>
-    <button class="btn" onclick="startLinearFunctions()">funkcje liniowe</button>
-    <button class="btn" onclick="startTrigonometry()">trygonometria</button>
-    <button class="btn" onclick="startGeometry()">geometria</button>
-    <br><br>albo napisz z czym masz problem`);
+    claudeAI.askClaude("wybrano matematykę, przedstaw tematy", {
+        exerciseMode: false,
+        topic: 'matematyka'
+    }).then(response => {
+        addTutorMessage(`${response}
+        <br><br>
+        <button class="btn" onclick="startQuadraticFunctions()">funkcje kwadratowe</button>
+        <button class="btn" onclick="startLinearFunctions()">funkcje liniowe</button>
+        <button class="btn" onclick="startTrigonometry()">trygonometria</button>
+        <button class="btn" onclick="startGeometry()">geometria</button>
+        <br><br>albo napisz z czym masz problem`);
+    });
 }
 
 function startPolishSession() {
-    addTutorMessage(`polski... ok, co robimy<br><br>• analiza lektury<br>• pisanie wypracowań<br>• figury stylistyczne<br>• ortografia<br><br>napisz z czym potrzebujesz pomocy`);
+    claudeAI.askClaude("wybrano język polski, przedstaw tematy", {
+        exerciseMode: false,
+        topic: 'język polski'
+    }).then(response => {
+        addTutorMessage(`${response}<br><br>• analiza lektury<br>• pisanie wypracowań<br>• figury stylistyczne<br>• ortografia<br><br>napisz z czym potrzebujesz pomocy`);
+    });
 }
 
 // Rozpoczęcie sesji z funkcjami kwadratowymi
-function startQuadraticFunctions() {
+async function startQuadraticFunctions() {
     currentExercise = 0;
     exerciseMode = true;
     exerciseStartTime = new Date();
     exerciseAnswers = [];
     
-    addTutorMessage(`funkcje kwadratowe... okej. przygotowałem 10 zadań na podstawowym poziomie<br><br>
-    jak będziesz potrzebować pomocy to pisz. nie ma co się stresować<br><br>
-    <strong>zaczynamy</strong>`);
+    const response = await claudeAI.askClaude("rozpoczynamy ćwiczenia z funkcji kwadratowych", {
+        exerciseMode: true,
+        currentExercise: 0,
+        topic: 'funkcje kwadratowe',
+        totalExercises: quadraticExercises.length
+    });
+    
+    addTutorMessage(`${response}<br><br><strong>zaczynamy</strong>`);
     
     setTimeout(() => {
         showCurrentExercise();
@@ -105,8 +476,88 @@ function startQuadraticFunctions() {
 }
 
 // Wyświetlenie aktualnego zadania
-function showCurrentExercise() {
+async function showCurrentExercise() {
     if (currentExercise >= quadraticExercises.length) {
+        finishExerciseSession();
+        return;
+    }
+
+    const exercise = quadraticExercises[currentExercise];
+    const progress = ((currentExercise + 1) / quadraticExercises.length * 100).toFixed(0);
+    
+    // Poproś Claude o skomentowanie zadania
+    const exerciseComment = await claudeAI.askClaude(`przedstawiam zadanie ${currentExercise + 1}: ${exercise.question}`, {
+        exerciseMode: true,
+        currentExercise: currentExercise + 1,
+        topic: 'funkcje kwadratowe',
+        exerciseType: exercise.type,
+        difficulty: exercise.difficulty
+    });
+    
+    addTutorMessage(`
+        <div style="border: 2px solid #4facfe; border-radius: 15px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.9);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <strong style="color: #4a5568;">Zadanie ${exercise.id}/10</strong>
+                <div style="background: #4facfe; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em;">
+                    ${exercise.difficulty}
+                </div>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                <div style="font-size: 1.1em; font-weight: 600; color: #2d3748;">
+                    📝 ${exercise.question}
+                </div>
+            </div>
+            
+            <div style="margin: 15px 0;">
+                <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background: #4facfe; height: 100%; width: ${progress}%; transition: width 0.5s ease;"></div>
+                </div>
+                <small style="color: #718096;">Postęp: ${progress}%</small>
+            </div>
+            
+            <div style="padding: 10px; background: #f0f8ff; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4facfe;">
+                <strong>Alex:</strong> ${exerciseComment}
+            </div>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                <button class="btn" onclick="showHint()" style="font-size: 0.9em; padding: 8px 15px;">podpowiedź</button>
+                <button class="btn" onclick="submitExerciseAnswer()" style="font-size: 0.9em; padding: 8px 15px;">sprawdź</button>
+                <button class="btn" onclick="skipExercise()" style="font-size: 0.9em; padding: 8px 15px; background: #718096;">pomiń</button>
+            </div>
+        </div>
+        
+        <div style="margin: 10px 0; padding: 10px; background: #f0fff4; border-radius: 8px; border-left: 4px solid #48bb78;">
+            <strong>napisz odpowiedź poniżej i kliknij sprawdź</strong>
+        </div>
+    `);
+}
+
+// Pokazanie podpowiedzi
+async function showHint() {
+    const exercise = quadraticExercises[currentExercise];
+    const hintIndex = Math.min(
+        exerciseAnswers.filter(a => a.exerciseId === exercise.id && a.hintUsed).length,
+        exercise.hints.length - 1
+    );
+    
+    const hint = exercise.hints[hintIndex];
+    
+    // Zapisz że użyto podpowiedzi
+    claudeAI.updateStudentProfile("", {
+        hintUsed: true,
+        topic: 'funkcje kwadratowe'
+    });
+    
+    const response = await claudeAI.askClaude(`uczeń poprosił o podpowiedź do zadania: ${exercise.question}. Dostępna podpowiedź: ${hint}`, {
+        exerciseMode: true,
+        hintRequested: true,
+        exerciseType: exercise.type,
+        topic: 'funkcje kwadratowe'
+    });
+    
+    addTutorMessage(`<strong>podpowiedź:</strong> ${hint}<br><br>${response}`);
+}ises.length) {
         finishExerciseSession();
         return;
     }
