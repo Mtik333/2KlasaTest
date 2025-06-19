@@ -42,7 +42,71 @@
                 <input type="text" id="chatInput" placeholder="Napisz pytanie lub rozpocznij sesję nauki...">
                 <button class="btn" onclick="sendMessage()">Wyślij</button>
                 <button class="btn" onclick="startLearningSession()">Rozpocznij Sesję</button>
-                <button class="btn" onclick="setupClaudeAPI()" title="Konfiguracja Claude API">⚙️ API</button>
+                <button class="btn" onclick="openApiModal()" title="Konfiguracja systemu uczenia się">⚙️ Konfiguracja</button>
+                <button class="btn" onclick="showLearningPanel()" title="Panel sterowania Learning System">📊 Panel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal konfiguracji API -->
+    <div id="apiModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeApiModal()">&times;</span>
+            <h2>⚙️ Konfiguracja Systemu Uczenia</h2>
+            
+            <!-- Status aktualny -->
+            <div id="currentStatus"></div>
+            
+            <!-- Przełącznik trybu -->
+            <div class="form-group">
+                <label>Tryb działania systemu:</label>
+                <div class="toggle-container">
+                    <div class="toggle-info">
+                        <div class="toggle-title" id="toggleTitle">Tryb Autonomiczny</div>
+                        <div class="toggle-description" id="toggleDescription">
+                            System używa zapisanych wzorców bez API
+                        </div>
+                    </div>
+                    <div class="toggle-switch" id="modeToggle" onclick="toggleMode()">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pole API Key (pokazywane tylko w trybie uczenia) -->
+            <div class="form-group" id="apiKeyGroup" style="display: none;">
+                <label for="apiKeyInput">Claude API Key:</label>
+                <div class="api-key-container">
+                    <input type="password" id="apiKeyInput" placeholder="sk-ant-...">
+                    <button class="api-key-toggle" onclick="toggleApiKeyVisibility()" title="Pokaż/Ukryj klucz">
+                        👁️
+                    </button>
+                </div>
+                <small>
+                    Klucz API uzyskasz na <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a><br>
+                    • Idź do "API Keys"<br>
+                    • Kliknij "Create Key"<br>
+                    • Skopiuj klucz (zaczyna się od sk-ant-)
+                </small>
+            </div>
+            
+            <!-- Informacja o okresie uczenia -->
+            <div id="learningInfo" style="display: none;">
+                <div style="background: #f0f8ff; padding: 15px; border-radius: 10px; border-left: 4px solid #4facfe; margin: 15px 0;">
+                    <strong>🧠 Tryb uczenia się:</strong><br>
+                    System będzie się uczyć przez 7 dni, zapisując wszystkie interakcje z prawdziwym Claude AI. 
+                    Po tym czasie automatycznie przełączy się w tryb autonomiczny.
+                    <br><br>
+                    <strong>Koszt:</strong> ~$5-10 za tydzień uczenia się
+                </div>
+            </div>
+            
+            <!-- Przyciski -->
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" onclick="closeApiModal()">Anuluj</button>
+                <button class="modal-btn modal-btn-primary" id="saveConfigBtn" onclick="saveConfiguration()">
+                    Zapisz konfigurację
+                </button>
             </div>
         </div>
     </div>
