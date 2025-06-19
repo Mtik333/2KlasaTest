@@ -4,6 +4,143 @@ let exerciseMode = false;
 let exerciseStartTime = null;
 let exerciseAnswers = [];
 
+// Claude API Configuration (uproszczona wersja dla Learning System)
+class ClaudeIntegration {
+    constructor() {
+        this.apiKey = localStorage.getItem('claude_api_key') || null;
+        this.baseURL = 'https://api.anthropic.com/v1/messages';
+        this.studentProfile = this.loadStudentProfile();
+    }
+
+    async setApiKey(key) {
+        this.apiKey = key;
+        localStorage.setItem('claude_api_key', key);
+        
+        try {
+            await this.testConnection();
+            return { success: true, message: "połączenie z claude api działa!" };
+        } catch (error) {
+            this.apiKey = null;
+            localStorage.removeItem('claude_api_key');
+            return { success: false, message: "błąd połączenia: " + error.message };
+        }
+    }
+
+    async testConnection() {
+        const response = await fetch(this.baseURL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': this.apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: "claude-3-sonnet-20240229",
+                max_tokens: 50,
+                messages: [{ role: "user", content: "odpowiedz krótko: test ok" }]
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.json();
+    }
+
+    async askClaude(message, context = {}) {
+        if (!this.apiKey) {
+            throw new Error('No API key');
+        }
+
+        const prompt = this.buildSystemPrompt(context);
+        const userMessage = this.buildUserMessage(message, context);
+
+        const response = await fetch(this.baseURL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': this.apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: "claude-3-sonnet-20240229",
+                max_tokens: 300,
+                messages: [{ role: "user", content: prompt + "\n\nUCZEŃ: " + userMessage }]
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.content[0].text;
+    }
+
+    buildSystemPrompt(context) {
+        const profile = this.studentProfile;
+        
+        return `Jesteś Alex - flegmatyczny korepetytor AI dla ucznia 2 klasy liceum. 
+
+TWÓJ STYL:
+- piszesz małymi literami na początku zdań (czasem zapominasz o wielkiej literze)
+- NIE używasz emoji ani wykrzykników  
+- młodzieżowy język: "okej", "spoko", "luz", "git", "no to"
+- flegmatyczny ton - bez przesadnego entuzjazmu
+- realistyczne oceny: "poszło spoko" zamiast "fantastycznie!"
+
+PROFIL UCZNIA:
+- Średni wynik: ${profile.averageScore}%
+- Poziom frustracji: ${profile.frustrationLevel}/10
+- Słabe obszary: ${profile.weakAreas.join(', ')}
+
+OBECNA SESJA:
+${context.exerciseMode ? `
+- Tryb ćwiczeń: AKTYWNY (${context.currentExercise}/10 zadanie)
+- Czas sesji: ${context.sessionTimeMinutes} minut
+` : '- Tryb ćwiczeń: NIEAKTYWNY (rozmowa ogólna)'}
+
+WYTYCZNE:
+1. Dostosuj ton do profilu ucznia
+2. Jeśli się frustruje - uspokajaj: "luz", "spoko"
+3. Jeśli ma dobre wyniki - pochwal bez przesady: "git", "niezły wynik"
+4. Pamiętaj o flegmatycznym stylu
+
+PRZYKŁADY:
+✓ "git, masz to. poszło spoko"
+✓ "hmm, nie tym razem. ale luz, każdy się myli"  
+✓ "okej, która część sprawia problemy"
+
+UNIKAJ:
+✗ Emoji i wykrzykników
+✗ Przesadnego entuzjazmu`;
+    }
+
+    buildUserMessage(message, context) {
+        let contextInfo = "";
+        if (context.exerciseMode && context.lastInteraction) {
+            contextInfo = `\n[KONTEKST: ${context.lastInteraction}]`;
+        }
+        return message + contextInfo;
+    }
+
+    loadStudentProfile() {
+        const saved = localStorage.getItem('student_profile_claude');
+        if (saved) {
+            return JSON.parse(saved);
+        }
+
+        return {
+            averageScore: 0,
+            frustrationLevel: 5,
+            weakAreas: ['funkcje kwadratowe']
+        };
+    }
+
+    saveStudentProfile() {
+        localStorage.setItem('student_profile_claude', JSON.stringify(this.studentProfile));
+    }
+}
 // Learning & Replay System - Uczenie się od AI, potem autonomia
 class LearningReplaySystem {
     constructor() {
@@ -671,7 +808,10 @@ UNIKAJ:
 
 // Inicjalizacja systemów
 const claudeAI = new ClaudeIntegration();
-const learningReplaySystem = new LearningReplaySystem();tokens: 300,
+const learningReplaySystem = new LearningReplaySystem();
+
+// Zwijanie/rozwijanie dashboardu
+let isDashboardCollapsed = false;tokens: 300,
                     messages: [
                         { role: "user", content: prompt + "\n\nUCZEŃ: " + userMessage }
                     ]
