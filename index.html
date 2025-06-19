@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Korepetycji AI - Monitor Postępów</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎓 System Korepetycji AI</h1>
+            <p>Monitorowanie postępów nauki przed egzaminami poprawkowymi</p>
+        </div>
+
+        <div class="subject-tabs">
+            <button class="tab active" onclick="switchSubject('math')">📊 Matematyka</button>
+            <button class="tab" onclick="switchSubject('polish')">📚 Język Polski</button>
+            <button class="tab" onclick="switchSubject('overall')">📈 Podsumowanie</button>
+        </div>
+
+        <div class="dashboard" id="dashboard">
+            <!-- Karty będą generowane dynamicznie -->
+        </div>
+
+        <div class="tutor-chat">
+            <h3>💬 Chat z Korepetytorem AI</h3>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message tutor-message">
+                    no siema... jestem alex, twój korepetytor ai. robię z tobą matme i polski na poziomie 2 klasy liceum
+                    <br><br>
+                    <strong>co potrafię:</strong><br>
+                    • wyjaśniam trudne zagadnienia<br>
+                    • robię z tobą testy i zadania<br>
+                    • śledzę twoje postępy<br>
+                    • pomagam kiedy nie wiesz co dalej<br>
+                    <br>
+                    więc... z czym masz problem
+                </div>
+            </div>
+            <div class="input-area">
+                <input type="text" id="chatInput" placeholder="Napisz pytanie lub rozpocznij sesję nauki...">
+                <button class="btn" onclick="sendMessage()">Wyślij</button>
+                <button class="btn" onclick="startLearningSession()">Rozpocznij Sesję</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/exercises.js"></script>
+    <script src="js/tutor.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

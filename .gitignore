@@ -1,0 +1,20 @@
+# Pliki systemu
+.DS_Store
+Thumbs.db
+
+# Edytory
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logi
+*.log
+
+# Pliki tymczasowe
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*~
