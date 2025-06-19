@@ -250,4 +250,61 @@ function finishExerciseSession() {
     if (score >= 70) {
         studentData.math.completedTopics++;
         if (!studentData.math.achievements.includes("funkcje kwadratowe")) {
-            studentData.math.achievements.
+            studentData.math.achievements.push("funkcje kwadratowe");
+        }
+    }
+    
+    // Aktualizacja średniej
+    const scores = studentData.math.recentScores;
+    studentData.math.averageScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    
+    saveData();
+    updateDashboard();
+    
+    addTutorMessage(`skończone. oto jak poszło<br><br>
+    <strong>wyniki:</strong><br>
+    • poprawne odpowiedzi: ${correctAnswers}/10<br>
+    • wynik: ${score}%<br>
+    • czas: ${sessionTime} minut<br><br>
+    ${score >= 80 ? "niezły wynik, git" : 
+      score >= 60 ? "okej, da się żyć" : 
+      "hmm, trzeba jeszcze poćwiczyć"}<br><br>
+    chcesz porobić jeszcze coś czy na dziś wystarczy`);
+}
+
+function getEncouragement(score) {
+    if (score >= 80) return "poszło spoko, niezły wynik";
+    if (score >= 60) return "okej, da się żyć z tym wynikiem";
+    if (score >= 40) return "trzeba jeszcze popracować ale nie jest źle";
+    return "hmm, nie było najlepiej ale da się to poprawić";
+}
+
+// Inne funkcje matematyczne (placeholder)
+function startLinearFunctions() {
+    addTutorMessage("funkcje liniowe jeszcze nie gotowe. na razie pograj z funkcjami kwadratowymi");
+}
+
+function startTrigonometry() {
+    addTutorMessage("trygonometria będzie niedługo. trzymaj się na razie funkcji kwadratowych");
+}
+
+function startGeometry() {
+    addTutorMessage("geometria w przygotowaniu. skup się teraz na funkcjach kwadratowych");
+}
+
+// Funkcje dodatkowe
+function practiceWeakArea(subject) {
+    const area = studentData[subject].weakAreas[0];
+    addTutorMessage(`ćwiczymy słaby obszar: ${area}. to świetnie że chcesz poprawić swoje słabsze strony. zaczynajmy`);
+}
+
+function generateDailyPlan() {
+    const mathTopic = getRandomMathTopic();
+    const polishTopic = getRandomPolishTopic();
+    
+    addTutorMessage(`nowy plan dnia<br><br>
+    <strong>rano (9:00-10:30):</strong> matma - ${mathTopic}<br>
+    <strong>przerwa:</strong> 30 min relaksu<br>
+    <strong>popołudnie (15:00-16:30):</strong> polski - ${polishTopic}<br><br>
+    pamiętaj że regularne przerwy to nie lenistwo tylko mądrość`);
+}
