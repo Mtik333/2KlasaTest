@@ -1294,7 +1294,50 @@ function startPolishSession() {
     });
 }
 
-// Rozpoczęcie sesji z funkcjami kwadratowymi
+// Zwijanie/rozwijanie dashboardu
+let isDashboardCollapsed = false;
+
+function collapseDashboard() {
+    const dashboard = document.getElementById('dashboard');
+    const subjectTabs = document.getElementById('subjectTabs');
+    const toggleContainer = document.getElementById('dashboardToggle');
+    
+    dashboard.classList.add('dashboard-collapsed');
+    subjectTabs.classList.add('subject-tabs-collapsed');
+    toggleContainer.style.display = 'block';
+    
+    isDashboardCollapsed = true;
+    updateToggleButtonText();
+}
+
+function expandDashboard() {
+    const dashboard = document.getElementById('dashboard');
+    const subjectTabs = document.getElementById('subjectTabs');
+    const toggleContainer = document.getElementById('dashboardToggle');
+    
+    dashboard.classList.remove('dashboard-collapsed');
+    subjectTabs.classList.remove('subject-tabs-collapsed');
+    toggleContainer.style.display = 'none';
+    
+    isDashboardCollapsed = false;
+}
+
+function toggleDashboard() {
+    if (isDashboardCollapsed) {
+        expandDashboard();
+    } else {
+        collapseDashboard();
+    }
+}
+
+function updateToggleButtonText() {
+    const toggleText = document.getElementById('toggleText');
+    if (isDashboardCollapsed) {
+        toggleText.textContent = '📊 Pokaż statystyki';
+    } else {
+        toggleText.textContent = '📊 Ukryj statystyki';
+    }
+}
 async function startQuadraticFunctions() {
     currentExercise = 0;
     exerciseMode = true;

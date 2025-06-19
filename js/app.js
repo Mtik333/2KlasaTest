@@ -93,16 +93,6 @@ function generateSubjectDashboard(subject) {
         </div>
 
         <div class="card">
-            <h3>🎯 Słabe Obszary</h3>
-            ${data.weakAreas.map(area => `
-                <div style="margin: 8px 0; padding: 8px; background: #fed7d7; border-radius: 5px; color: #c53030;">
-                    ${area}
-                </div>
-            `).join('')}
-            <button class="btn" onclick="practiceWeakArea('${subject}')">Ćwicz Słabe Obszary</button>
-        </div>
-
-        <div class="card">
             <h3>📈 Ostatnie Wyniki</h3>
             ${data.recentScores.length > 0 ? 
                 data.recentScores.slice(-5).map((score, index) => `
@@ -170,13 +160,6 @@ function generateOverallDashboard() {
                 <div style="font-size: 1.2em; color: #718096;">dni</div>
             </div>
             ${getDaysToExam() <= 30 ? '<div style="color: #e53e3e; font-weight: bold;">⚡ Czas na intensywną naukę!</div>' : ''}
-        </div>
-
-        <div class="card">
-            <h3>💡 Motywacyjna Wskazówka Dnia</h3>
-            <div style="padding: 15px; background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); border-radius: 8px; font-style: italic;">
-                "${getMotivationalTip()}"
-            </div>
         </div>
     `;
 }

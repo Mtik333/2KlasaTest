@@ -13,7 +13,7 @@
             <p>Monitorowanie postępów nauki przed egzaminami poprawkowymi</p>
         </div>
 
-        <div class="subject-tabs">
+        <div class="subject-tabs" id="subjectTabs">
             <button class="tab active" onclick="switchSubject('math')">📊 Matematyka</button>
             <button class="tab" onclick="switchSubject('polish')">📚 Język Polski</button>
             <button class="tab" onclick="switchSubject('overall')">📈 Podsumowanie</button>
@@ -21,6 +21,13 @@
 
         <div class="dashboard" id="dashboard">
             <!-- Karty będą generowane dynamicznie -->
+        </div>
+
+        <!-- Przycisk zwijania/rozwijania podczas sesji -->
+        <div class="dashboard-toggle" id="dashboardToggle" style="display: none;">
+            <button class="dashboard-toggle-btn" onclick="toggleDashboard()">
+                <span id="toggleText">📊 Pokaż statystyki</span>
+            </button>
         </div>
 
         <div class="tutor-chat">
