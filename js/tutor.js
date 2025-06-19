@@ -1,146 +1,643 @@
-// Zmienne związane z ćwiczeniami
+// Pozostałe funkcje
+async function setupClaudeAPI() {
+    openApiModal();
+}
+
+// Event listenery
+window.onclick = function(event) {
+    const modal = document.getElementById('apiModal');
+    if (event.target === modal) {
+        closeApiModal();
+    }
+}
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeApiModal();
+    }
+});
+
+// Inicjalizacja przy starcie
+document.addEventListener('DOMContentLoaded', function() {
+    const savedMode = localStorage.getItem('learning_mode_enabled');
+    if (savedMode !== null) {
+        isLearningModeEnabled = savedMode === 'true';
+        
+        if (isLearningModeEnabled && !claudeAI.apiKey) {
+            localStorage.setItem('learning_mode_enabled', 'false');
+            isLearningModeEnabled = false;
+        }
+    }
+});
+
+// Panel sterowania Learning System
+function showLearningPanel() {
+    const report = learningReplaySystem.generateLearningReport();
+    const modeText = learningReplaySystem.isLearningMode ? 
+        `🧠 tryb uczenia (${report.daysLeft} dni pozostało)` : 
+        `🤖 tryb autonomiczny`;
+    
+    addTutorMessage(`
+        <div style="border: 2px solid #4facfe; border-radius: 15px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.95);">
+            <h3 style="color: #4a5568; margin-bottom: 15px;">📊 Panel Learning System</h3>
+            
+            <div style="background: #f7fafc; padding: 15px; border-radius: 10px; margin: 10px 0;">
+                <strong>Status:</strong> ${modeText}<br>
+                <strong>Zapisanych interakcji:</strong> ${report.totalInteractions}<br>
+                <strong>Efektywność:</strong> ${report.effectivenessRate}%<br>
+                <strong>Postęp uczenia:</strong> ${report.learningProgress}%
+            </div>
+            
+            ${report.categoryStats && Object.keys(report.categoryStats).length > 0 ? `
+            <div style="background: #f0fff4; padding: 15px; border-radius: 10px; margin: 10px 0;">
+                <strong>Statystyki kategorii odpowiedzi:</strong><br>
+                ${Object.entries(report.categoryStats).map(([cat, count]) => 
+                    `• ${cat}: ${count} razy`
+                ).join('<br>')}
+            </div>
+            ` : ''}
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                ${!learningReplaySystem.isLearningMode && !claudeAI.apiKey ? 
+                    '<button class="btn" onclick="setupClaudeAPI()" style="font-size: 0.9em;">🧠 rozpocznij uczenie</button>' : ''}
+                ${learningReplaySystem.isLearningMode && report.readyForAutonomy ? 
+                    '<button class="btn" onclick="switchToAutonomy()" style="font-size: 0.9em;">🤖 przełącz na autonomię</button>' : ''}
+                <button class="btn" onclick="exportLearningData()" style="font-size: 0.9em;">📁 eksportuj dane</button>
+            </div>
+        </div>
+    `);
+}
+
+// Przełączenie na autonomię
+async function switchToAutonomy() {
+    const result = learningReplaySystem.switchToAutonomy();
+    addTutorMessage(`${result.message}<br><br>
+    <strong>raport końcowy:</strong><br>
+    • zapisanych interakcji: ${result.report.totalInteractions}<br>
+    • efektywność: ${result.report.effectivenessRate}%<br>
+    • dni uczenia: ${Math.round(result.report.daysInLearning)}<br><br>
+    teraz będę działać na podstawie zebranych danych o twoim stylu nauki`);
+}
+
+// Eksport danych uczenia się
+function exportLearningData() {
+    const result = learningReplaySystem.exportAllData();
+    addTutorMessage(`${result.message}<br><br>otwórz konsolę przeglądarki (F12) żeby zobaczyć wszystkie dane`);
+}
+
+// Funkcje sesji nauki
+function startLearningSession() {
+    learningReplaySystem.respondToStudent("rozpocznij sesję nauki", {
+        exerciseMode: false,
+        topic: 'wybór przedmiotu'
+    }).then(response => {
+        addTutorMessage(`${response}
+        <br><br>
+        <button class="btn" onclick="startMathSession()">matma</button>
+        <button class="btn" onclick="startPolishSession()">polski</button>
+        <br><br>
+        wybieraj co chcesz`);
+    });
+}
+
+function startMathSession() {
+    learningReplaySystem.respondToStudent("wybrano matematykę, przedstaw tematy", {
+        exerciseMode: false,
+        topic: 'matematyka'
+    }).then(response => {
+        addTutorMessage(`${response}
+        <br><br>
+        <button class="btn" onclick="startQuadraticFunctions()">funkcje kwadratowe</button>
+        <button class="btn" onclick="startLinearFunctions()">funkcje liniowe</button>
+        <button class="btn" onclick="startTrigonometry()">trygonometria</button>
+        <button class="btn" onclick="startGeometry()">geometria</button>
+        <br><br>albo napisz z czym masz problem`);
+    });
+}
+
+function startPolishSession() {
+    learningReplaySystem.respondToStudent("wybrano język polski, przedstaw tematy", {
+        exerciseMode: false,
+        topic: 'język polski'
+    }).then(response => {
+        addTutorMessage(`${response}<br><br>• analiza lektury<br>• pisanie wypracowań<br>• figury stylistyczne<br>• ortografia<br><br>napisz z czym potrzebujesz pomocy`);
+    });
+}
+
+// Dashboard controls
+let isDashboardCollapsed = false;
+
+function collapseDashboard() {
+    const dashboard = document.getElementById('dashboard');
+    const subjectTabs = document.getElementById('subjectTabs');
+    const toggleContainer = document.getElementById('dashboardToggle');
+    
+    dashboard.classList.add('dashboard-collapsed');
+    subjectTabs.classList.add('subject-tabs-collapsed');
+    toggleContainer.style.display = 'block';
+    
+    isDashboardCollapsed = true;
+    updateToggleButtonText();
+}
+
+function expandDashboard() {
+    const dashboard = document.getElementById('dashboard');
+    const subjectTabs = document.getElementById('subjectTabs');
+    const toggleContainer = document.getElementById('dashboardToggle');
+    
+    dashboard.classList.remove('dashboard-collapsed');
+    subjectTabs.classList.remove('subject-tabs-collapsed');
+    toggleContainer.style.display = 'none';
+    
+    isDashboardCollapsed = false;
+}
+
+function toggleDashboard() {
+    if (isDashboardCollapsed) {
+        expandDashboard();
+    } else {
+        collapseDashboard();
+    }
+}
+
+function updateToggleButtonText() {
+    const toggleText = document.getElementById('toggleText');
+    if (isDashboardCollapsed) {
+        toggleText.textContent = '📊 Pokaż statystyki';
+    } else {
+        toggleText.textContent = '📊 Ukryj statystyki';
+    }
+}
+
+// Funkcje ćwiczeń
+async function startQuadraticFunctions() {
+    currentExercise = 0;
+    exerciseMode = true;
+    exerciseStartTime = new Date();
+    exerciseAnswers = [];
+    
+    try {
+        const response = await claudeAI.askClaude("rozpoczynamy ćwiczenia z funkcji kwadratowych", {
+            exerciseMode: true,
+            currentExercise: 0,
+            topic: 'funkcje kwadratowe',
+            totalExercises: quadraticExercises.length
+        });
+        
+        addTutorMessage(`${response}<br><br><strong>zaczynamy</strong>`);
+    } catch (error) {
+        addTutorMessage("funkcje kwadratowe... okej. przygotowałem 10 zadań<br><br><strong>zaczynamy</strong>");
+    }
+    
+    setTimeout(() => {
+        showCurrentExercise();
+    }, 2000);
+}
+
+async function showCurrentExercise() {
+    // Sprawdź czy quadraticExercises istnieje
+    if (typeof quadraticExercises === 'undefined') {
+        addTutorMessage("brak zadań do wyświetlenia. sprawdź czy plik exercises.js jest załadowany");
+        return;
+    }
+    
+    if (currentExercise >= quadraticExercises.length) {
+        finishExerciseSession();
+        return;
+    }
+
+    const exercise = quadraticExercises[currentExercise];
+    const progress = ((currentExercise + 1) / quadraticExercises.length * 100).toFixed(0);
+    
+    try {
+        const exerciseComment = await claudeAI.askClaude(`przedstawiam zadanie ${currentExercise + 1}: ${exercise.question}`, {
+            exerciseMode: true,
+            currentExercise: currentExercise + 1,
+            topic: 'funkcje kwadratowe',
+            exerciseType: exercise.type,
+            difficulty: exercise.difficulty
+        });
+        
+        addTutorMessage(`
+            <div style="border: 2px solid #4facfe; border-radius: 15px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.9);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <strong style="color: #4a5568;">Zadanie ${exercise.id}/10</strong>
+                    <div style="background: #4facfe; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em;">
+                        ${exercise.difficulty}
+                    </div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <div style="font-size: 1.1em; font-weight: 600; color: #2d3748;">
+                        📝 ${exercise.question}
+                    </div>
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: #4facfe; height: 100%; width: ${progress}%; transition: width 0.5s ease;"></div>
+                    </div>
+                    <small style="color: #718096;">Postęp: ${progress}%</small>
+                </div>
+                
+                <div style="padding: 10px; background: #f0f8ff; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4facfe; color: #2d3748;">
+                    <strong>Alex:</strong> ${exerciseComment}
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                    <button class="btn" onclick="showHint()" style="font-size: 0.9em; padding: 8px 15px;">podpowiedź</button>
+                    <button class="btn" onclick="submitExerciseAnswer()" style="font-size: 0.9em; padding: 8px 15px;">sprawdź</button>
+                    <button class="btn" onclick="skipExercise()" style="font-size: 0.9em; padding: 8px 15px; background: #718096;">pomiń</button>
+                </div>
+            </div>
+            
+            <div style="margin: 10px 0; padding: 10px; background: #f0fff4; border-radius: 8px; border-left: 4px solid #48bb78;">
+                <strong>napisz odpowiedź poniżej i kliknij sprawdź</strong>
+            </div>
+        `);
+    } catch (error) {
+        // Fallback bez Claude
+        addTutorMessage(`
+            <div style="border: 2px solid #4facfe; border-radius: 15px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.9);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <strong style="color: #4a5568;">Zadanie ${exercise.id}/10</strong>
+                    <div style="background: #4facfe; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em;">
+                        ${exercise.difficulty}
+                    </div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); padding: 15px; border-radius: 10px; margin: 10px 0;">
+                    <div style="font-size: 1.1em; font-weight: 600; color: #2d3748;">
+                        📝 ${exercise.question}
+                    </div>
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: #4facfe; height: 100%; width: ${progress}%; transition: width 0.5s ease;"></div>
+                    </div>
+                    <small style="color: #718096;">Postęp: ${progress}%</small>
+                </div>
+                
+                <div style="padding: 10px; background: #f0f8ff; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4facfe; color: #2d3748;">
+                    <strong>Alex:</strong> okej, zadanie ${currentExercise + 1}. spróbuj to rozwiązać
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                    <button class="btn" onclick="showHint()" style="font-size: 0.9em; padding: 8px 15px;">podpowiedź</button>
+                    <button class="btn" onclick="submitExerciseAnswer()" style="font-size: 0.9em; padding: 8px 15px;">sprawdź</button>
+                    <button class="btn" onclick="skipExercise()" style="font-size: 0.9em; padding: 8px 15px; background: #718096;">pomiń</button>
+                </div>
+            </div>
+            
+            <div style="margin: 10px 0; padding: 10px; background: #f0fff4; border-radius: 8px; border-left: 4px solid #48bb78; color: #2d3748;">
+                <strong>napisz odpowiedź poniżej i kliknij sprawdź</strong>
+            </div>
+        `);
+    }
+}
+
+async function showHint() {
+    const exercise = quadraticExercises[currentExercise];
+    const hintIndex = Math.min(
+        exerciseAnswers.filter(a => a.exerciseId === exercise.id && a.hintUsed).length,
+        exercise.hints.length - 1
+    );
+    
+    const hint = exercise.hints[hintIndex];
+    
+    try {
+        const response = await claudeAI.askClaude(`uczeń poprosił o podpowiedź do zadania: ${exercise.question}. Dostępna podpowiedź: ${hint}`, {
+            exerciseMode: true,
+            hintRequested: true,
+            exerciseType: exercise.type,
+            topic: 'funkcje kwadratowe'
+        });
+        
+        addTutorMessage(`<strong>podpowiedź:</strong> ${hint}<br><br>${response}`);
+    } catch (error) {
+        addTutorMessage(`<strong>podpowiedź:</strong> ${hint}<br><br>luz, czasem każdy potrzebuje pomocy`);
+    }
+}
+
+async function submitExerciseAnswer() {
+    const input = document.getElementById('chatInput');
+    const userAnswer = input.value.trim();
+    
+    if (!userAnswer) {
+        try {
+            const response = await claudeAI.askClaude("uczeń nie wpisał odpowiedzi ale kliknął sprawdź", {
+                exerciseMode: true,
+                topic: 'funkcje kwadratowe'
+            });
+            addTutorMessage(response);
+        } catch (error) {
+            addTutorMessage("napisz najpierw odpowiedź");
+        }
+        return;
+    }
+    
+    addStudentMessage(userAnswer);
+    input.value = '';
+    
+    const exercise = quadraticExercises[currentExercise];
+    const isCorrect = checkAnswer(userAnswer, exercise.answer);
+    
+    exerciseAnswers.push({
+        exerciseId: exercise.id,
+        userAnswer: userAnswer,
+        correctAnswer: exercise.answer,
+        timestamp: new Date(),
+        hintUsed: false,
+        isCorrect: isCorrect
+    });
+    
+    const context = {
+        exerciseMode: true,
+        exerciseCorrect: isCorrect,
+        userAnswer: userAnswer,
+        correctAnswer: exercise.answer,
+        exerciseQuestion: exercise.question,
+        topic: 'funkcje kwadratowe',
+        currentExercise: currentExercise + 1,
+        totalExercises: quadraticExercises.length
+    };
+    
+    try {
+        let response;
+        if (isCorrect) {
+            response = await claudeAI.askClaude(`uczeń odpowiedział poprawnie: "${userAnswer}" na zadanie: ${exercise.question}. Prawidłowa odpowiedź to: ${exercise.answer}`, context);
+            
+            addTutorMessage(`<strong>git, masz to</strong><br><br>
+            prawidłowa odpowiedź: ${exercise.answer}<br><br>
+            ${response}`);
+            
+            setTimeout(() => {
+                currentExercise++;
+                showCurrentExercise();
+            }, 3000);
+        } else {
+            response = await claudeAI.askClaude(`uczeń odpowiedział niepoprawnie: "${userAnswer}" na zadanie: ${exercise.question}. Prawidłowa odpowiedź to: ${exercise.answer}`, context);
+            
+            addTutorMessage(`<strong>nie tym razem</strong><br><br>
+            twoja odpowiedź: "${userAnswer}"<br>
+            ${response}<br><br>
+            <button class="btn" onclick="showHint()" style="font-size: 0.9em;">podpowiedź</button>
+            <button class="btn" onclick="showSolution()" style="font-size: 0.9em;">pokaż rozwiązanie</button>
+            <button class="btn" onclick="tryAgain()" style="font-size: 0.9em;">jeszcze raz</button>`);
+        }
+    } catch (error) {
+        // Fallback responses
+        if (isCorrect) {
+            addTutorMessage(`<strong>git, masz to</strong><br><br>
+            prawidłowa odpowiedź: ${exercise.answer}<br><br>
+            poszło spoko, zobaczymy czy dasz radę z następnym`);
+            
+            setTimeout(() => {
+                currentExercise++;
+                showCurrentExercise();
+            }, 3000);
+        } else {
+            addTutorMessage(`<strong>nie tym razem</strong><br><br>
+            twoja odpowiedź: "${userAnswer}"<br>
+            nie, to nie to. ale spoko, każdy się myli<br><br>
+            <button class="btn" onclick="showHint()" style="font-size: 0.9em;">podpowiedź</button>
+            <button class="btn" onclick="showSolution()" style="font-size: 0.9em;">pokaż rozwiązanie</button>
+            <button class="btn" onclick="tryAgain()" style="font-size: 0.9em;">jeszcze raz</button>`);
+        }
+    }
+}
+
+async function showSolution() {
+    const exercise = quadraticExercises[currentExercise];
+    
+    try {
+        const response = await claudeAI.askClaude(`uczeń poprosił o pokazanie rozwiązania zadania: ${exercise.question}. Prawidłowa odpowiedź: ${exercise.answer}`, {
+            exerciseMode: true,
+            solutionRequested: true,
+            topic: 'funkcje kwadratowe'
+        });
+        
+        addTutorMessage(`<strong>jak to zrobić:</strong><br><br>
+        ${exercise.question}<br><br>
+        <strong>odpowiedź:</strong> ${exercise.answer}<br><br>
+        ${response}<br><br>
+        <button class="btn" onclick="nextExercise()" style="font-size: 0.9em;">następne zadanie</button>`);
+    } catch (error) {
+        addTutorMessage(`<strong>jak to zrobić:</strong><br><br>
+        ${exercise.question}<br><br>
+        <strong>odpowiedź:</strong> ${exercise.answer}<br><br>
+        jasne teraz? lecimy dalej<br><br>
+        <button class="btn" onclick="nextExercise()" style="font-size: 0.9em;">następne zadanie</button>`);
+    }
+}
+
+function nextExercise() {
+    currentExercise++;
+    showCurrentExercise();
+}
+
+async function tryAgain() {
+    try {
+        const response = await claudeAI.askClaude("uczeń chce spróbować ponownie to samo zadanie", {
+            exerciseMode: true,
+            retryAttempt: true,
+            topic: 'funkcje kwadratowe'
+        });
+        addTutorMessage(response);
+    } catch (error) {
+        addTutorMessage("okej, próbuj jeszcze raz. napisz odpowiedź");
+    }
+}
+
+async function skipExercise() {
+    const exercise = quadraticExercises[currentExercise];
+    
+    try {
+        const response = await claudeAI.askClaude(`uczeń pomija zadanie: ${exercise.question}. Prawidłowa odpowiedź: ${exercise.answer}`, {
+            exerciseMode: true,
+            exerciseSkipped: true,
+            topic: 'funkcje kwadratowe'
+        });
+        
+        addTutorMessage(`${response}<br><br>
+        <strong>żeby wiedziałeś, prawidłowa odpowiedź to:</strong> ${exercise.answer}<br><br>
+        idziemy dalej`);
+    } catch (error) {
+        addTutorMessage(`spoko, pomijamy<br><br>
+        <strong>żeby wiedziałeś, prawidłowa odpowiedź to:</strong> ${exercise.answer}<br><br>
+        idziemy dalej`);
+    }
+    
+    setTimeout(() => {
+        currentExercise++;
+        showCurrentExercise();
+    }, 2000);
+}
+
+async function finishExerciseSession() {
+    exerciseMode = false;
+    const sessionTime = Math.round((new Date() - exerciseStartTime) / 1000 / 60);
+    const correctAnswers = exerciseAnswers.filter(a => checkAnswer(a.userAnswer, a.correctAnswer)).length;
+    const score = Math.round((correctAnswers / quadraticExercises.length) * 100);
+    
+    // Aktualizacja danych
+    studentData.math.totalSessions++;
+    studentData.math.timeSpent += sessionTime / 60;
+    studentData.math.recentScores.push(score);
+    
+    if (score >= 70) {
+        studentData.math.completedTopics++;
+        if (!studentData.math.achievements.includes("funkcje kwadratowe")) {
+            studentData.math.achievements.push("funkcje kwadratowe");
+        }
+    }
+    
+    // Aktualizacja średniej
+    const scores = studentData.math.recentScores;
+    studentData.math.averageScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    
+    // Aktualizacja profilu Claude
+    claudeAI.studentProfile.totalSessions++;
+    claudeAI.studentProfile.recentScores.push(score);
+    claudeAI.studentProfile.averageScore = studentData.math.averageScore;
+    claudeAI.saveStudentProfile();
+    
+    saveData();
+    updateDashboard();
+    
+    try {
+        const summaryResponse = await claudeAI.askClaude(`zakończona sesja z funkcjami kwadratowymi. Wyniki: ${correctAnswers}/10 poprawnych (${score}%), czas: ${sessionTime} minut`, {
+            exerciseMode: false,
+            sessionCompleted: true,
+            finalScore: score,
+            sessionTime: sessionTime,
+            topic: 'funkcje kwadratowe'
+        });
+        
+        addTutorMessage(`skończone. oto jak poszło<br><br>
+        <strong>wyniki:</strong><br>
+        • poprawne odpowiedzi: ${correctAnswers}/10<br>
+        • wynik: ${score}%<br>
+        • czas: ${sessionTime} minut<br><br>
+        ${summaryResponse}`);
+    } catch (error) {
+        let encouragement = "";
+        if (score >= 90) {
+            encouragement = "wow, naprawdę git. masz talent do matmy";
+        } else if (score >= 70) {
+            encouragement = "spoko wynik. jeszcze trochę ćwiczeń i będzie perfekcyjnie";
+        } else if (score >= 50) {
+            encouragement = "hmm, trzeba jeszcze poćwiczyć ale da się to poprawić";
+        } else {
+            encouragement = "nie najgorzej jak na początek. trzeba więcej treningu";
+        }
+        
+        addTutorMessage(`<strong>sesja skończona</strong><br><br>
+        twój wynik: ${correctAnswers}/${quadraticExercises.length} (${score}%)<br>
+        czas: ${sessionTime} minut<br><br>
+        ${encouragement}<br><br>
+        <button class="btn" onclick="startQuadraticFunctions()">jeszcze raz</button>
+        <button class="btn" onclick="startMathSession()">inne tematy</button>`);
+    }
+}
+
+// Pozostałe funkcje matematyczne
+async function startLinearFunctions() {
+    try {
+        const response = await claudeAI.askClaude("uczeń chce ćwiczyć funkcje liniowe ale nie mamy jeszcze zadań", {
+            exerciseMode: false,
+            topic: 'funkcje liniowe'
+        });
+        addTutorMessage(`${response}<br><br>na razie pograj z funkcjami kwadratowymi`);
+    } catch (error) {
+        addTutorMessage("funkcje liniowe... jeszcze nad tym pracuję. na razie mam tylko funkcje kwadratowe gotowe");
+    }
+}
+
+async function startTrigonometry() {
+    try {
+        const response = await claudeAI.askClaude("uczeń chce ćwiczyć trygonometrię ale nie mamy jeszcze zadań", {
+            exerciseMode: false,
+            topic: 'trygonometria'
+        });
+        addTutorMessage(`${response}<br><br>trzymaj się na razie funkcji kwadratowych`);
+    } catch (error) {
+        addTutorMessage("trygonometria... to będzie później. najpierw ogarnij funkcje kwadratowe");
+    }
+}
+
+async function startGeometry() {
+    try {
+        const response = await claudeAI.askClaude("uczeń chce ćwiczyć geometrię ale nie mamy jeszcze zadań", {
+            exerciseMode: false,
+            topic: 'geometria'
+        });
+        addTutorMessage(`${response}<br><br>skup się teraz na funkcjach kwadratowych`);
+    } catch (error) {
+        addTutorMessage("geometria... jeszcze nie gotowa. zacznij od funkcji kwadratowych");
+    }
+}
+
+// Funkcje pomocnicze
+function getEncouragement(score) {
+    if (score >= 80) return "poszło spoko, niezły wynik";
+    if (score >= 60) return "okej, da się żyć z tym wynikiem";
+    if (score >= 40) return "trzeba jeszcze popracować ale nie jest źle";
+    return "hmm, nie było najlepiej ale da się to poprawić";
+}
+
+function getRandomMathTopic() {
+    const topics = ['Funkcje liniowe', 'Równania kwadratowe', 'Geometria analityczna', 'Trygonometria', 'Logarytmy'];
+    return topics[Math.floor(Math.random() * topics.length)];
+}
+
+function getRandomPolishTopic() {
+    const topics = ['Analiza "Lalki"', 'Romantyzm', 'Techniki poetyckie', 'Wypracowanie - rozprawka', 'Interpunkcja'];
+    return topics[Math.floor(Math.random() * topics.length)];
+}
+
+async function practiceWeakArea(subject) {
+    const area = studentData[subject].weakAreas[0];
+    try {
+        const response = await claudeAI.askClaude(`uczeń chce ćwiczyć słaby obszar: ${area}`, {
+            exerciseMode: false,
+            topic: area,
+            weakAreaPractice: true
+        });
+        addTutorMessage(`${response}<br><br>zaczynajmy`);
+    } catch (error) {
+        addTutorMessage(`okej, skupmy się na ${area}<br><br>zaczynajmy`);
+    }
+}
+
+async function generateDailyPlan() {
+    const mathTopic = getRandomMathTopic();
+    const polishTopic = getRandomPolishTopic();
+    
+    try {
+        const response = await claudeAI.askClaude(`wygeneruj plan dnia nauki: matematyka (${mathTopic}), polski (${polishTopic})`, {
+            exerciseMode: false,
+            planGeneration: true
+        });
+        
+        addTutorMessage(`${response}<br><br>
+        <strong>plan na dziś:</strong><br>
+        rano (9:00-10:30): matma - ${mathTopic}<br>
+        popołudnie (15:00-16:30): polski - ${polishTopic}`);
+    } catch (error) {
+        addTutorMessage(`okej, plan na dziś<br><br>
+        <strong>plan na dziś:</strong><br>
+        rano (9:00-10:30): matma - ${mathTopic}<br>
+        popołudnie (15:00-16:30): polski - ${polishTopic}`);
+    }
+}
+
 let currentExercise = 0;
 let exerciseMode = false;
 let exerciseStartTime = null;
 let exerciseAnswers = [];
 
-// Claude API Configuration (uproszczona wersja dla Learning System)
-class ClaudeIntegration {
-    constructor() {
-        this.apiKey = localStorage.getItem('claude_api_key') || null;
-        this.baseURL = 'https://api.anthropic.com/v1/messages';
-        this.studentProfile = this.loadStudentProfile();
-    }
-
-    async setApiKey(key) {
-        this.apiKey = key;
-        localStorage.setItem('claude_api_key', key);
-        
-        try {
-            await this.testConnection();
-            return { success: true, message: "połączenie z claude api działa!" };
-        } catch (error) {
-            this.apiKey = null;
-            localStorage.removeItem('claude_api_key');
-            return { success: false, message: "błąd połączenia: " + error.message };
-        }
-    }
-
-    async testConnection() {
-        const response = await fetch(this.baseURL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': this.apiKey,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: "claude-3-sonnet-20240229",
-                max_tokens: 50,
-                messages: [{ role: "user", content: "odpowiedz krótko: test ok" }]
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        return await response.json();
-    }
-
-    async askClaude(message, context = {}) {
-        if (!this.apiKey) {
-            throw new Error('No API key');
-        }
-
-        const prompt = this.buildSystemPrompt(context);
-        const userMessage = this.buildUserMessage(message, context);
-
-        const response = await fetch(this.baseURL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': this.apiKey,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: "claude-3-sonnet-20240229",
-                max_tokens: 300,
-                messages: [{ role: "user", content: prompt + "\n\nUCZEŃ: " + userMessage }]
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        return data.content[0].text;
-    }
-
-    buildSystemPrompt(context) {
-        const profile = this.studentProfile;
-        
-        return `Jesteś Alex - flegmatyczny korepetytor AI dla ucznia 2 klasy liceum. 
-
-TWÓJ STYL:
-- piszesz małymi literami na początku zdań (czasem zapominasz o wielkiej literze)
-- NIE używasz emoji ani wykrzykników  
-- młodzieżowy język: "okej", "spoko", "luz", "git", "no to"
-- flegmatyczny ton - bez przesadnego entuzjazmu
-- realistyczne oceny: "poszło spoko" zamiast "fantastycznie!"
-
-PROFIL UCZNIA:
-- Średni wynik: ${profile.averageScore}%
-- Poziom frustracji: ${profile.frustrationLevel}/10
-- Słabe obszary: ${profile.weakAreas.join(', ')}
-
-OBECNA SESJA:
-${context.exerciseMode ? `
-- Tryb ćwiczeń: AKTYWNY (${context.currentExercise}/10 zadanie)
-- Czas sesji: ${context.sessionTimeMinutes} minut
-` : '- Tryb ćwiczeń: NIEAKTYWNY (rozmowa ogólna)'}
-
-WYTYCZNE:
-1. Dostosuj ton do profilu ucznia
-2. Jeśli się frustruje - uspokajaj: "luz", "spoko"
-3. Jeśli ma dobre wyniki - pochwal bez przesady: "git", "niezły wynik"
-4. Pamiętaj o flegmatycznym stylu
-
-PRZYKŁADY:
-✓ "git, masz to. poszło spoko"
-✓ "hmm, nie tym razem. ale luz, każdy się myli"  
-✓ "okej, która część sprawia problemy"
-
-UNIKAJ:
-✗ Emoji i wykrzykników
-✗ Przesadnego entuzjazmu`;
-    }
-
-    buildUserMessage(message, context) {
-        let contextInfo = "";
-        if (context.exerciseMode && context.lastInteraction) {
-            contextInfo = `\n[KONTEKST: ${context.lastInteraction}]`;
-        }
-        return message + contextInfo;
-    }
-
-    loadStudentProfile() {
-        const saved = localStorage.getItem('student_profile_claude');
-        if (saved) {
-            return JSON.parse(saved);
-        }
-
-        return {
-            averageScore: 0,
-            frustrationLevel: 5,
-            weakAreas: ['funkcje kwadratowe']
-        };
-    }
-
-    saveStudentProfile() {
-        localStorage.setItem('student_profile_claude', JSON.stringify(this.studentProfile));
-    }
-}
 // Learning & Replay System - Uczenie się od AI, potem autonomia
 class LearningReplaySystem {
     constructor() {
@@ -553,28 +1050,46 @@ class LearningReplaySystem {
         this.saveInteractionDatabase();
     }
 
-    // Raport z procesu uczenia się
+    // Raport z procesu uczenia się - NAPRAWIONA wersja bez rekursji
     generateLearningReport() {
         const totalInteractions = this.interactionDatabase.interactions.length;
-        const effectiveInteractions = this.interactionDatabase.interactions.filter(i => i.effectiveness > 6).length;
+        let effectiveInteractions = 0;
+        
+        // Policz efektywne interakcje bez używania filter
+        for (let i = 0; i < this.interactionDatabase.interactions.length; i++) {
+            const interaction = this.interactionDatabase.interactions[i];
+            if (interaction.effectiveness && interaction.effectiveness > 6) {
+                effectiveInteractions++;
+            }
+        }
         
         const categoryStats = {};
         this.interactionDatabase.interactions.forEach(i => {
-            if (!categoryStats[i.responseCategory]) {
+            if (i.responseCategory && !categoryStats[i.responseCategory]) {
                 categoryStats[i.responseCategory] = 0;
             }
-            categoryStats[i.responseCategory]++;
+            if (i.responseCategory) {
+                categoryStats[i.responseCategory]++;
+            }
         });
+        
+        const effectivenessRate = totalInteractions > 0 ? Math.round((effectiveInteractions / totalInteractions) * 100) : 0;
+        const daysInLearning = this.getDaysInLearning();
+        const learningProgress = Math.min(100, Math.round((daysInLearning / 7) * 100));
+        const daysLeft = this.getDaysLeft();
+        
+        // NAPRAWIONA wersja isReadyForAutonomy - bez wywołania generateLearningReport
+        const readyForAutonomy = totalInteractions >= 30 && effectivenessRate >= 60;
         
         return {
             totalInteractions,
             effectiveInteractions,
-            effectivenessRate: totalInteractions > 0 ? Math.round((effectiveInteractions / totalInteractions) * 100) : 0,
+            effectivenessRate,
             categoryStats,
-            learningProgress: this.calculateLearningProgress(),
-            readyForAutonomy: this.isReadyForAutonomy(),
-            daysInLearning: this.getDaysInLearning(),
-            daysLeft: this.getDaysLeft()
+            learningProgress,
+            readyForAutonomy,
+            daysInLearning,
+            daysLeft
         };
     }
 
@@ -588,10 +1103,20 @@ class LearningReplaySystem {
         return (Date.now() - start) / (1000 * 60 * 60 * 24);
     }
 
-    // Sprawdź czy gotowy na autonomię
+    // Sprawdź czy gotowy na autonomię - NAPRAWIONA wersja bez rekursji
     isReadyForAutonomy() {
-        const report = this.generateLearningReport();
-        return report.totalInteractions >= 30 && report.effectivenessRate >= 60;
+        const totalInteractions = this.interactionDatabase.interactions.length;
+        let effectiveInteractions = 0;
+        
+        for (let i = 0; i < this.interactionDatabase.interactions.length; i++) {
+            const interaction = this.interactionDatabase.interactions[i];
+            if (interaction.effectiveness && interaction.effectiveness > 6) {
+                effectiveInteractions++;
+            }
+        }
+        
+        const effectivenessRate = totalInteractions > 0 ? Math.round((effectiveInteractions / totalInteractions) * 100) : 0;
+        return totalInteractions >= 30 && effectivenessRate >= 60;
     }
 
     // Przełączenie w tryb autonomii
@@ -668,12 +1193,13 @@ class LearningReplaySystem {
     }
 }
 
-// Claude API Configuration (uproszczona wersja dla Learning System)
+// POJEDYNCZA definicja klasy ClaudeIntegration
 class ClaudeIntegration {
     constructor() {
         this.apiKey = localStorage.getItem('claude_api_key') || null;
         this.baseURL = 'https://api.anthropic.com/v1/messages';
         this.studentProfile = this.loadStudentProfile();
+        this.conversationHistory = this.loadConversationHistory();
     }
 
     async setApiKey(key) {
@@ -738,105 +1264,14 @@ class ClaudeIntegration {
         }
 
         const data = await response.json();
-        return data.content[0].text;
-    }
+        const aiResponse = data.content[0].text;
 
-    buildSystemPrompt(context) {
-        const profile = this.studentProfile;
+        // Zapisz interakcję
+        this.recordInteraction(message, aiResponse, context);
         
-        return `Jesteś Alex - flegmatyczny korepetytor AI dla ucznia 2 klasy liceum. 
-
-TWÓJ STYL:
-- piszesz małymi literami na początku zdań (czasem zapominasz o wielkiej literze)
-- NIE używasz emoji ani wykrzykników  
-- młodzieżowy język: "okej", "spoko", "luz", "git", "no to"
-- flegmatyczny ton - bez przesadnego entuzjazmu
-- realistyczne oceny: "poszło spoko" zamiast "fantastycznie!"
-
-PROFIL UCZNIA:
-- Średni wynik: ${profile.averageScore}%
-- Poziom frustracji: ${profile.frustrationLevel}/10
-- Słabe obszary: ${profile.weakAreas.join(', ')}
-
-OBECNA SESJA:
-${context.exerciseMode ? `
-- Tryb ćwiczeń: AKTYWNY (${context.currentExercise}/10 zadanie)
-- Czas sesji: ${context.sessionTimeMinutes} minut
-` : '- Tryb ćwiczeń: NIEAKTYWNY (rozmowa ogólna)'}
-
-WYTYCZNE:
-1. Dostosuj ton do profilu ucznia
-2. Jeśli się frustruje - uspokajaj: "luz", "spoko"
-3. Jeśli ma dobre wyniki - pochwal bez przesady: "git", "niezły wynik"
-4. Pamiętaj o flegmatycznym stylu
-
-PRZYKŁADY:
-✓ "git, masz to. poszło spoko"
-✓ "hmm, nie tym razem. ale luz, każdy się myli"  
-✓ "okej, która część sprawia problemy"
-
-UNIKAJ:
-✗ Emoji i wykrzykników
-✗ Przesadnego entuzjazmu`;
+        return aiResponse;
     }
 
-    buildUserMessage(message, context) {
-        let contextInfo = "";
-        if (context.exerciseMode && context.lastInteraction) {
-            contextInfo = `\n[KONTEKST: ${context.lastInteraction}]`;
-        }
-        return message + contextInfo;
-    }
-
-    loadStudentProfile() {
-        const saved = localStorage.getItem('student_profile_claude');
-        if (saved) {
-            return JSON.parse(saved);
-        }
-
-        return {
-            averageScore: 0,
-            frustrationLevel: 5,
-            weakAreas: ['funkcje kwadratowe']
-        };
-    }
-
-    saveStudentProfile() {
-        localStorage.setItem('student_profile_claude', JSON.stringify(this.studentProfile));
-    }
-}
-
-// Inicjalizacja systemów
-const claudeAI = new ClaudeIntegration();
-const learningReplaySystem = new LearningReplaySystem();
-
-// Zwijanie/rozwijanie dashboardu
-let isDashboardCollapsed = false;tokens: 300,
-                    messages: [
-                        { role: "user", content: prompt + "\n\nUCZEŃ: " + userMessage }
-                    ]
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const aiResponse = data.content[0].text;
-
-            // Zapisz interakcję
-            this.recordInteraction(message, aiResponse, context);
-            
-            return aiResponse;
-
-        } catch (error) {
-            console.error('Claude API Error:', error);
-            return this.getFallbackResponse(message);
-        }
-    }
-
-    // Budowanie systemu prompt dla Claude
     buildSystemPrompt(context) {
         const profile = this.studentProfile;
         
@@ -890,7 +1325,6 @@ UNIKAJ:
 ✗ Długich wyjaśnień bez potrzeby`;
     }
 
-    // Budowanie wiadomości użytkownika z kontekstem
     buildUserMessage(message, context) {
         let contextInfo = "";
         
@@ -1009,6 +1443,12 @@ UNIKAJ:
         localStorage.setItem('student_profile_claude', JSON.stringify(this.studentProfile));
     }
 
+    // Ładowanie historii konwersacji
+    loadConversationHistory() {
+        const saved = localStorage.getItem('conversation_history');
+        return saved ? JSON.parse(saved) : [];
+    }
+
     // Fallback odpowiedzi gdy API nie działa
     getFallbackResponse(message) {
         const responses = [
@@ -1068,8 +1508,9 @@ UNIKAJ:
     }
 }
 
-// Inicjalizacja Claude integration
+// Inicjalizacja systemów
 const claudeAI = new ClaudeIntegration();
+const learningReplaySystem = new LearningReplaySystem();
 
 // Chat z korepetytorem - GŁÓWNA FUNKCJA ZINTEGROWANA Z LEARNING SYSTEM
 async function sendMessage() {
@@ -1109,6 +1550,7 @@ function addStudentMessage(message) {
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
+
 
 function addTutorMessage(message) {
     const chatMessages = document.getElementById('chatMessages');
@@ -1289,526 +1731,3 @@ async function saveConfiguration() {
     }
 }
 
-// Aktualizacja funkcji setupClaudeAPI (legacy support)
-async function setupClaudeAPI() {
-    openApiModal();
-}
-
-// Zamknij modal po kliknięciu poza nim
-window.onclick = function(event) {
-    const modal = document.getElementById('apiModal');
-    if (event.target === modal) {
-        closeApiModal();
-    }
-}
-
-// Event listener dla ESC
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape') {
-        closeApiModal();
-    }
-});
-
-// Aktualizuj Learning & Replay System żeby respektował ustawienia
-const originalCheckLearningMode = learningReplaySystem.checkLearningMode;
-learningReplaySystem.checkLearningMode = function() {
-    // Sprawdź czy tryb uczenia jest włączony w ustawieniach
-    const enabled = localStorage.getItem('learning_mode_enabled') === 'true';
-    if (!enabled) return false;
-    
-    // Jeśli włączony, sprawdź standardowo
-    return originalCheckLearningMode.call(this);
-};
-
-// Inicjalizacja przy starcie
-document.addEventListener('DOMContentLoaded', function() {
-    // Sprawdź zapisane ustawienia
-    const savedMode = localStorage.getItem('learning_mode_enabled');
-    if (savedMode !== null) {
-        isLearningModeEnabled = savedMode === 'true';
-        
-        // Jeśli był włączony tryb uczenia ale brak API key, wyłącz
-        if (isLearningModeEnabled && !claudeAI.apiKey) {
-            localStorage.setItem('learning_mode_enabled', 'false');
-            isLearningModeEnabled = false;
-        }
-    }
-});
-
-// Panel sterowania Learning System
-function showLearningPanel() {
-    const report = learningReplaySystem.generateLearningReport();
-    const modeText = learningReplaySystem.isLearningMode ? 
-        `🧠 tryb uczenia (${report.daysLeft} dni pozostało)` : 
-        `🤖 tryb autonomiczny`;
-    
-    addTutorMessage(`
-        <div style="border: 2px solid #4facfe; border-radius: 15px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.95);">
-            <h3 style="color: #4a5568; margin-bottom: 15px;">📊 Panel Learning System</h3>
-            
-            <div style="background: #f7fafc; padding: 15px; border-radius: 10px; margin: 10px 0;">
-                <strong>Status:</strong> ${modeText}<br>
-                <strong>Zapisanych interakcji:</strong> ${report.totalInteractions}<br>
-                <strong>Efektywność:</strong> ${report.effectivenessRate}%<br>
-                <strong>Postęp uczenia:</strong> ${report.learningProgress}%
-            </div>
-            
-            ${report.categoryStats && Object.keys(report.categoryStats).length > 0 ? `
-            <div style="background: #f0fff4; padding: 15px; border-radius: 10px; margin: 10px 0;">
-                <strong>Statystyki kategorii odpowiedzi:</strong><br>
-                ${Object.entries(report.categoryStats).map(([cat, count]) => 
-                    `• ${cat}: ${count} razy`
-                ).join('<br>')}
-            </div>
-            ` : ''}
-            
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
-                ${!learningReplaySystem.isLearningMode && !claudeAI.apiKey ? 
-                    '<button class="btn" onclick="setupClaudeAPI()" style="font-size: 0.9em;">🧠 rozpocznij uczenie</button>' : ''}
-                ${learningReplaySystem.isLearningMode && report.readyForAutonomy ? 
-                    '<button class="btn" onclick="switchToAutonomy()" style="font-size: 0.9em;">🤖 przełącz na autonomię</button>' : ''}
-                <button class="btn" onclick="exportLearningData()" style="font-size: 0.9em;">📁 eksportuj dane</button>
-            </div>
-        </div>
-    `);
-}
-
-// Przełączenie na autonomię
-async function switchToAutonomy() {
-    const result = learningReplaySystem.switchToAutonomy();
-    addTutorMessage(`${result.message}<br><br>
-    <strong>raport końcowy:</strong><br>
-    • zapisanych interakcji: ${result.report.totalInteractions}<br>
-    • efektywność: ${result.report.effectivenessRate}%<br>
-    • dni uczenia: ${Math.round(result.report.daysInLearning)}<br><br>
-    teraz będę działać na podstawie zebranych danych o twoim stylu nauki`);
-}
-
-// Eksport danych uczenia się
-function exportLearningData() {
-    const result = learningReplaySystem.exportAllData();
-    addTutorMessage(`${result.message}<br><br>otwórz konsolę przeglądarki (F12) żeby zobaczyć wszystkie dane`);
-}
-
-// Funkcja fallback dla kompatybilności wstecznej  
-async function respondToStudent(message) {
-    // Ta funkcja jest zastąpiona przez Learning System
-    return await learningReplaySystem.respondToStudent(message, {});
-}
-
-function startLearningSession() {
-    learningReplaySystem.respondToStudent("rozpocznij sesję nauki", {
-        exerciseMode: false,
-        topic: 'wybór przedmiotu'
-    }).then(response => {
-        addTutorMessage(`${response}
-        <br><br>
-        <button class="btn" onclick="startMathSession()">matma</button>
-        <button class="btn" onclick="startPolishSession()">polski</button>
-        <br><br>
-        wybieraj co chcesz`);
-    });
-}
-
-function startMathSession() {
-    learningReplaySystem.respondToStudent("wybrano matematykę, przedstaw tematy", {
-        exerciseMode: false,
-        topic: 'matematyka'
-    }).then(response => {
-        addTutorMessage(`${response}
-        <br><br>
-        <button class="btn" onclick="startQuadraticFunctions()">funkcje kwadratowe</button>
-        <button class="btn" onclick="startLinearFunctions()">funkcje liniowe</button>
-        <button class="btn" onclick="startTrigonometry()">trygonometria</button>
-        <button class="btn" onclick="startGeometry()">geometria</button>
-        <br><br>albo napisz z czym masz problem`);
-    });
-}
-
-function startPolishSession() {
-    learningReplaySystem.respondToStudent("wybrano język polski, przedstaw tematy", {
-        exerciseMode: false,
-        topic: 'język polski'
-    }).then(response => {
-        addTutorMessage(`${response}<br><br>• analiza lektury<br>• pisanie wypracowań<br>• figury stylistyczne<br>• ortografia<br><br>napisz z czym potrzebujesz pomocy`);
-    });
-}
-
-// Zwijanie/rozwijanie dashboardu
-let isDashboardCollapsed = false;
-
-function collapseDashboard() {
-    const dashboard = document.getElementById('dashboard');
-    const subjectTabs = document.getElementById('subjectTabs');
-    const toggleContainer = document.getElementById('dashboardToggle');
-    
-    dashboard.classList.add('dashboard-collapsed');
-    subjectTabs.classList.add('subject-tabs-collapsed');
-    toggleContainer.style.display = 'block';
-    
-    isDashboardCollapsed = true;
-    updateToggleButtonText();
-}
-
-function expandDashboard() {
-    const dashboard = document.getElementById('dashboard');
-    const subjectTabs = document.getElementById('subjectTabs');
-    const toggleContainer = document.getElementById('dashboardToggle');
-    
-    dashboard.classList.remove('dashboard-collapsed');
-    subjectTabs.classList.remove('subject-tabs-collapsed');
-    toggleContainer.style.display = 'none';
-    
-    isDashboardCollapsed = false;
-}
-
-function toggleDashboard() {
-    if (isDashboardCollapsed) {
-        expandDashboard();
-    } else {
-        collapseDashboard();
-    }
-}
-
-function updateToggleButtonText() {
-    const toggleText = document.getElementById('toggleText');
-    if (isDashboardCollapsed) {
-        toggleText.textContent = '📊 Pokaż statystyki';
-    } else {
-        toggleText.textContent = '📊 Ukryj statystyki';
-    }
-}
-async function startQuadraticFunctions() {
-    currentExercise = 0;
-    exerciseMode = true;
-    exerciseStartTime = new Date();
-    exerciseAnswers = [];
-    
-    const response = await claudeAI.askClaude("rozpoczynamy ćwiczenia z funkcji kwadratowych", {
-        exerciseMode: true,
-        currentExercise: 0,
-        topic: 'funkcje kwadratowe',
-        totalExercises: quadraticExercises.length
-    });
-    
-    addTutorMessage(`${response}<br><br><strong>zaczynamy</strong>`);
-    
-    setTimeout(() => {
-        showCurrentExercise();
-    }, 2000);
-}
-
-// Wyświetlenie aktualnego zadania
-async function showCurrentExercise() {
-    if (currentExercise >= quadraticExercises.length) {
-        finishExerciseSession();
-        return;
-    }
-
-    const exercise = quadraticExercises[currentExercise];
-    const progress = ((currentExercise + 1) / quadraticExercises.length * 100).toFixed(0);
-    
-    // Poproś Claude o skomentowanie zadania
-    const exerciseComment = await claudeAI.askClaude(`przedstawiam zadanie ${currentExercise + 1}: ${exercise.question}`, {
-        exerciseMode: true,
-        currentExercise: currentExercise + 1,
-        topic: 'funkcje kwadratowe',
-        exerciseType: exercise.type,
-        difficulty: exercise.difficulty
-    });
-    
-    addTutorMessage(`
-        <div style="border: 2px solid #4facfe; border-radius: 15px; padding: 20px; margin: 10px 0; background: rgba(255,255,255,0.9);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <strong style="color: #4a5568;">Zadanie ${exercise.id}/10</strong>
-                <div style="background: #4facfe; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em;">
-                    ${exercise.difficulty}
-                </div>
-            </div>
-            
-            <div style="background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); padding: 15px; border-radius: 10px; margin: 10px 0;">
-                <div style="font-size: 1.1em; font-weight: 600; color: #2d3748;">
-                    📝 ${exercise.question}
-                </div>
-            </div>
-            
-            <div style="margin: 15px 0;">
-                <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
-                    <div style="background: #4facfe; height: 100%; width: ${progress}%; transition: width 0.5s ease;"></div>
-                </div>
-                <small style="color: #718096;">Postęp: ${progress}%</small>
-            </div>
-            
-            <div style="padding: 10px; background: #f0f8ff; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4facfe;">
-                <strong>Alex:</strong> ${exerciseComment}
-            </div>
-            
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
-                <button class="btn" onclick="showHint()" style="font-size: 0.9em; padding: 8px 15px;">podpowiedź</button>
-                <button class="btn" onclick="submitExerciseAnswer()" style="font-size: 0.9em; padding: 8px 15px;">sprawdź</button>
-                <button class="btn" onclick="skipExercise()" style="font-size: 0.9em; padding: 8px 15px; background: #718096;">pomiń</button>
-            </div>
-        </div>
-        
-        <div style="margin: 10px 0; padding: 10px; background: #f0fff4; border-radius: 8px; border-left: 4px solid #48bb78;">
-            <strong>napisz odpowiedź poniżej i kliknij sprawdź</strong>
-        </div>
-    `);
-}
-
-// Pokazanie podpowiedzi
-async function showHint() {
-    const exercise = quadraticExercises[currentExercise];
-    const hintIndex = Math.min(
-        exerciseAnswers.filter(a => a.exerciseId === exercise.id && a.hintUsed).length,
-        exercise.hints.length - 1
-    );
-    
-    const hint = exercise.hints[hintIndex];
-    
-    // Zapisz że użyto podpowiedzi
-    claudeAI.updateStudentProfile("", {
-        hintUsed: true,
-        topic: 'funkcje kwadratowe'
-    });
-    
-    const response = await claudeAI.askClaude(`uczeń poprosił o podpowiedź do zadania: ${exercise.question}. Dostępna podpowiedź: ${hint}`, {
-        exerciseMode: true,
-        hintRequested: true,
-        exerciseType: exercise.type,
-        topic: 'funkcje kwadratowe'
-    });
-    
-    addTutorMessage(`<strong>podpowiedź:</strong> ${hint}<br><br>${response}`);
-}ises.length) {
-        finishExerciseSession();
-// Sprawdzenie odpowiedzi
-async function submitExerciseAnswer() {
-    const input = document.getElementById('chatInput');
-    const userAnswer = input.value.trim();
-    
-    if (!userAnswer) {
-        const response = await claudeAI.askClaude("uczeń nie wpisał odpowiedzi ale kliknął sprawdź", {
-            exerciseMode: true,
-            topic: 'funkcje kwadratowe'
-        });
-        addTutorMessage(response);
-        return;
-    }
-    
-    addStudentMessage(userAnswer);
-    input.value = '';
-    
-    const exercise = quadraticExercises[currentExercise];
-    const isCorrect = checkAnswer(userAnswer, exercise.answer);
-    
-    exerciseAnswers.push({
-        exerciseId: exercise.id,
-        userAnswer: userAnswer,
-        correctAnswer: exercise.answer,
-        timestamp: new Date(),
-        hintUsed: false, // będzie aktualizowane jeśli używano podpowiedzi
-        isCorrect: isCorrect
-    });
-    
-    // Przygotuj kontekst dla Claude
-    const context = {
-        exerciseMode: true,
-        exerciseCorrect: isCorrect,
-        userAnswer: userAnswer,
-        correctAnswer: exercise.answer,
-        exerciseQuestion: exercise.question,
-        topic: 'funkcje kwadratowe',
-        currentExercise: currentExercise + 1,
-        totalExercises: quadraticExercises.length
-    };
-    
-    let response;
-    if (isCorrect) {
-        response = await claudeAI.askClaude(`uczeń odpowiedział poprawnie: "${userAnswer}" na zadanie: ${exercise.question}. Prawidłowa odpowiedź to: ${exercise.answer}`, context);
-        
-        addTutorMessage(`<strong>git, masz to</strong><br><br>
-        prawidłowa odpowiedź: ${exercise.answer}<br><br>
-        ${response}`);
-        
-        setTimeout(() => {
-            currentExercise++;
-            showCurrentExercise();
-        }, 3000);
-    } else {
-        response = await claudeAI.askClaude(`uczeń odpowiedział niepoprawnie: "${userAnswer}" na zadanie: ${exercise.question}. Prawidłowa odpowiedź to: ${exercise.answer}`, context);
-        
-        addTutorMessage(`<strong>nie tym razem</strong><br><br>
-        twoja odpowiedź: "${userAnswer}"<br>
-        ${response}<br><br>
-        <button class="btn" onclick="showHint()" style="font-size: 0.9em;">podpowiedź</button>
-        <button class="btn" onclick="showSolution()" style="font-size: 0.9em;">pokaż rozwiązanie</button>
-        <button class="btn" onclick="tryAgain()" style="font-size: 0.9em;">jeszcze raz</button>`);
-    }
-}
-
-// Pokazanie rozwiązania
-async function showSolution() {
-    const exercise = quadraticExercises[currentExercise];
-    
-    const response = await claudeAI.askClaude(`uczeń poprosił o pokazanie rozwiązania zadania: ${exercise.question}. Prawidłowa odpowiedź: ${exercise.answer}`, {
-        exerciseMode: true,
-        solutionRequested: true,
-        topic: 'funkcje kwadratowe'
-    });
-    
-    addTutorMessage(`<strong>jak to zrobić:</strong><br><br>
-    ${exercise.question}<br><br>
-    <strong>odpowiedź:</strong> ${exercise.answer}<br><br>
-    ${response}<br><br>
-    <button class="btn" onclick="nextExercise()" style="font-size: 0.9em;">następne zadanie</button>`);
-}
-
-// Następne zadanie
-function nextExercise() {
-    currentExercise++;
-    showCurrentExercise();
-}
-
-// Ponowna próba
-async function tryAgain() {
-    const response = await claudeAI.askClaude("uczeń chce spróbować ponownie to samo zadanie", {
-        exerciseMode: true,
-        retryAttempt: true,
-        topic: 'funkcje kwadratowe'
-    });
-    addTutorMessage(response);
-}
-
-// Pominięcie zadania
-async function skipExercise() {
-    const exercise = quadraticExercises[currentExercise];
-    
-    // Zapisz informację o pominięciu
-    claudeAI.updateStudentProfile("", {
-        exerciseSkipped: true,
-        topic: 'funkcje kwadratowe'
-    });
-    
-    const response = await claudeAI.askClaude(`uczeń pomija zadanie: ${exercise.question}. Prawidłowa odpowiedź: ${exercise.answer}`, {
-        exerciseMode: true,
-        exerciseSkipped: true,
-        topic: 'funkcje kwadratowe'
-    });
-    
-    addTutorMessage(`${response}<br><br>
-    <strong>żeby wiedziałeś, prawidłowa odpowiedź to:</strong> ${exercise.answer}<br><br>
-    idziemy dalej`);
-    
-    setTimeout(() => {
-        currentExercise++;
-        showCurrentExercise();
-    }, 2000);
-}
-
-// Zakończenie sesji ćwiczeń
-async function finishExerciseSession() {
-    exerciseMode = false;
-    const sessionTime = Math.round((new Date() - exerciseStartTime) / 1000 / 60);
-    const correctAnswers = exerciseAnswers.filter(a => checkAnswer(a.userAnswer, a.correctAnswer)).length;
-    const score = Math.round((correctAnswers / quadraticExercises.length) * 100);
-    
-    // Aktualizacja danych
-    studentData.math.totalSessions++;
-    studentData.math.timeSpent += sessionTime / 60;
-    studentData.math.recentScores.push(score);
-    
-    if (score >= 70) {
-        studentData.math.completedTopics++;
-        if (!studentData.math.achievements.includes("funkcje kwadratowe")) {
-            studentData.math.achievements.push("funkcje kwadratowe");
-        }
-    }
-    
-    // Aktualizacja średniej
-    const scores = studentData.math.recentScores;
-    studentData.math.averageScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    
-    // Aktualizacja profilu Claude
-    claudeAI.studentProfile.totalSessions++;
-    claudeAI.studentProfile.recentScores.push(score);
-    claudeAI.studentProfile.averageScore = studentData.math.averageScore;
-    claudeAI.saveStudentProfile();
-    
-    saveData();
-    updateDashboard();
-    
-    // Podsumowanie od Claude
-    const summaryResponse = await claudeAI.askClaude(`zakończona sesja z funkcjami kwadratowymi. Wyniki: ${correctAnswers}/10 poprawnych (${score}%), czas: ${sessionTime} minut`, {
-        exerciseMode: false,
-        sessionCompleted: true,
-        finalScore: score,
-        sessionTime: sessionTime,
-        topic: 'funkcje kwadratowe'
-    });
-    
-    addTutorMessage(`skończone. oto jak poszło<br><br>
-    <strong>wyniki:</strong><br>
-    • poprawne odpowiedzi: ${correctAnswers}/10<br>
-    • wynik: ${score}%<br>
-    • czas: ${sessionTime} minut<br><br>
-    ${summaryResponse}`);
-}
-
-function getEncouragement(score) {
-    if (score >= 80) return "poszło spoko, niezły wynik";
-    if (score >= 60) return "okej, da się żyć z tym wynikiem";
-    if (score >= 40) return "trzeba jeszcze popracować ale nie jest źle";
-    return "hmm, nie było najlepiej ale da się to poprawić";
-}
-
-// Inne funkcje matematyczne (placeholder)
-async function startLinearFunctions() {
-    const response = await claudeAI.askClaude("uczeń chce ćwiczyć funkcje liniowe ale nie mamy jeszcze zadań", {
-        exerciseMode: false,
-        topic: 'funkcje liniowe'
-    });
-    addTutorMessage(`${response}<br><br>na razie pograj z funkcjami kwadratowymi`);
-}
-
-async function startTrigonometry() {
-    const response = await claudeAI.askClaude("uczeń chce ćwiczyć trygonometrię ale nie mamy jeszcze zadań", {
-        exerciseMode: false,
-        topic: 'trygonometria'
-    });
-    addTutorMessage(`${response}<br><br>trzymaj się na razie funkcji kwadratowych`);
-}
-
-async function startGeometry() {
-    const response = await claudeAI.askClaude("uczeń chce ćwiczyć geometrię ale nie mamy jeszcze zadań", {
-        exerciseMode: false,
-        topic: 'geometria'
-    });
-    addTutorMessage(`${response}<br><br>skup się teraz na funkcjach kwadratowych`);
-}
-
-// Funkcje dodatkowe
-async function practiceWeakArea(subject) {
-    const area = studentData[subject].weakAreas[0];
-    const response = await claudeAI.askClaude(`uczeń chce ćwiczyć słaby obszar: ${area}`, {
-        exerciseMode: false,
-        topic: area,
-        weakAreaPractice: true
-    });
-    addTutorMessage(`${response}<br><br>zaczynajmy`);
-}
-
-async function generateDailyPlan() {
-    const mathTopic = getRandomMathTopic();
-    const polishTopic = getRandomPolishTopic();
-    
-    const response = await claudeAI.askClaude(`wygeneruj plan dnia nauki: matematyka (${mathTopic}), polski (${polishTopic})`, {
-        exerciseMode: false,
-        planGeneration: true
-    });
-    
-    addTutorMessage(`${response}<br><br>
-    <strong>plan na dziś:</strong><br>
-    rano (9:00-10:30): matma - ${mathTopic}<br>
-    popołudnie (15:00-16:30): polski - ${polishTopic}`);
-}
